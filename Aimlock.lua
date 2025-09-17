@@ -317,41 +317,9 @@ local function stopLocks()
     local character = getCharacter()
     if character and character:FindFirstChildOfClass("Humanoid") then
         character.Humanoid.AutoRotate = true
-        restorePhysics(character) -- Restore normal physics when unlocking
     end
     
     updateStatus()
-end
-
--- Prevent ragdoll/floating limbs
-local function preventRagdoll(character)
-    local humanoid = character:FindFirstChildOfClass("Humanoid")
-    if not humanoid then return end
-    
-    -- Disable problematic humanoid states
-    humanoid:SetStateEnabled(Enum.HumanoidStateType.Physics, false)
-    humanoid:SetStateEnabled(Enum.HumanoidStateType.Ragdoll, false)
-    humanoid:SetStateEnabled(Enum.HumanoidStateType.GettingUp, false)
-    humanoid:SetStateEnabled(Enum.HumanoidStateType.Seated, false)
-    humanoid:SetStateEnabled(Enum.HumanoidStateType.PlatformStanding, false)
-    
-    -- Keep character grounded and stable
-    if humanoid.PlatformStand then
-        humanoid.PlatformStand = false
-    end
-end
-
--- Restore normal physics
-local function restorePhysics(character)
-    local humanoid = character:FindFirstChildOfClass("Humanoid")
-    if not humanoid then return end
-    
-    -- Re-enable humanoid states
-    humanoid:SetStateEnabled(Enum.HumanoidStateType.Physics, true)
-    humanoid:SetStateEnabled(Enum.HumanoidStateType.Ragdoll, true)
-    humanoid:SetStateEnabled(Enum.HumanoidStateType.GettingUp, true)
-    humanoid:SetStateEnabled(Enum.HumanoidStateType.Seated, true)
-    humanoid:SetStateEnabled(Enum.HumanoidStateType.PlatformStanding, true)
 end
 
 -- Start aimlock
@@ -372,7 +340,6 @@ local function startAimlock()
     local character = getCharacter()
     if character and character:FindFirstChildOfClass("Humanoid") then
         character.Humanoid.AutoRotate = false
-        preventRagdoll(character) -- Prevent physics conflicts
     end
 
     connections.aimlock = RunService.RenderStepped:Connect(function()
@@ -380,23 +347,6 @@ local function startAimlock()
         if not character or not character:FindFirstChild("HumanoidRootPart") then
             stopLocks()
             return
-        end
-
-        local humanoid = character:FindFirstChildOfClass("Humanoid")
-        if not humanoid then
-            stopLocks()
-            return
-        end
-
-        -- Keep preventing ragdoll during aimlock
-        if humanoid.PlatformStand then
-            humanoid.PlatformStand = false
-        end
-        
-        -- Force humanoid to standing/running state
-        if humanoid:GetState() == Enum.HumanoidStateType.Physics or 
-           humanoid:GetState() == Enum.HumanoidStateType.Ragdoll then
-            humanoid:ChangeState(Enum.HumanoidStateType.Running)
         end
 
         if not target or not target:FindFirstChild("HumanoidRootPart") then
@@ -415,7 +365,7 @@ local function startAimlock()
         local velocity = targetHrp.AssemblyLinearVelocity
         local predictedPosition = targetPart.Position + (velocity * Settings.AimLock.Prediction)
 
-        -- Smooth rotation that preserves character physics
+        -- Fast, responsive rotation
         local direction = (Vector3.new(predictedPosition.X, hrp.Position.Y, predictedPosition.Z) - hrp.Position).Unit
         local newCFrame = CFrame.new(hrp.Position, hrp.Position + direction)
         
@@ -423,13 +373,7 @@ local function startAimlock()
         local distance = (hrp.Position - targetHrp.Position).Magnitude
         local sensitivity = distance < 50 and 1 or Settings.AimLock.Sensitivity
         
-        -- Use AssemblyLinearVelocity instead of direct CFrame for smoother physics
         hrp.CFrame = hrp.CFrame:Lerp(newCFrame, sensitivity)
-        
-        -- Ensure character stays grounded
-        if hrp.AssemblyLinearVelocity.Y > 50 then
-            hrp.AssemblyLinearVelocity = Vector3.new(hrp.AssemblyLinearVelocity.X, 0, hrp.AssemblyLinearVelocity.Z)
-        end
     end)
 
     updateStatus()
