@@ -18,15 +18,15 @@ end
 local Settings = {
     AimLock = {
         Enabled = false,
-        Sensitivity = 0.1,
-        Prediction = 0.165,
+        Sensitivity = 0.8,  -- Much faster lock-on
+        Prediction = 0.15,
         TargetPart = "Head"
     },
     CamLock = {
         Enabled = false,
-        Sensitivity = 0.08,
-        Prediction = 0.2,
-        Smoothness = 0.03
+        Sensitivity = 0.7,  -- Much faster camera lock
+        Prediction = 0.18,
+        Smoothness = 0.25   -- Much faster smoothness
     },
     MaxDistance = 200,
     WallCheck = false,
@@ -342,7 +342,7 @@ local function startAimlock()
         character.Humanoid.AutoRotate = false
     end
 
-    connections.aimlock = RunService.Heartbeat:Connect(function()
+    connections.aimlock = RunService.RenderStepped:Connect(function()
         local character = getCharacter()
         if not character or not character:FindFirstChild("HumanoidRootPart") then
             stopLocks()
@@ -365,11 +365,15 @@ local function startAimlock()
         local velocity = targetHrp.AssemblyLinearVelocity
         local predictedPosition = targetPart.Position + (velocity * Settings.AimLock.Prediction)
 
-        -- Smooth rotation
+        -- Fast, responsive rotation
         local direction = (Vector3.new(predictedPosition.X, hrp.Position.Y, predictedPosition.Z) - hrp.Position).Unit
         local newCFrame = CFrame.new(hrp.Position, hrp.Position + direction)
         
-        hrp.CFrame = hrp.CFrame:Lerp(newCFrame, Settings.AimLock.Sensitivity)
+        -- Much faster lock-on with instant snap for close targets
+        local distance = (hrp.Position - targetHrp.Position).Magnitude
+        local sensitivity = distance < 50 and 1 or Settings.AimLock.Sensitivity
+        
+        hrp.CFrame = hrp.CFrame:Lerp(newCFrame, sensitivity)
     end)
 
     updateStatus()
@@ -390,7 +394,7 @@ local function startCamlock()
 
     Settings.CamLock.Enabled = true
 
-    connections.camlock = RunService.Heartbeat:Connect(function()
+    connections.camlock = RunService.RenderStepped:Connect(function()
         if not target or not target:FindFirstChild("HumanoidRootPart") then
             target = getClosestPlayer()
             if not target then
@@ -406,9 +410,18 @@ local function startCamlock()
         local velocity = targetHrp.AssemblyLinearVelocity
         local predictedPosition = targetPart.Position + (velocity * Settings.CamLock.Prediction)
 
-        -- Smooth camera movement
+        -- Fast, responsive camera movement
         local newCFrame = CFrame.new(camera.CFrame.Position, predictedPosition)
-        camera.CFrame = camera.CFrame:Lerp(newCFrame, Settings.CamLock.Smoothness)
+        
+        -- Distance-based sensitivity for instant snap on close targets
+        local character = getCharacter()
+        if character and character:FindFirstChild("HumanoidRootPart") then
+            local distance = (character.HumanoidRootPart.Position - targetHrp.Position).Magnitude
+            local smoothness = distance < 50 and 1 or Settings.CamLock.Smoothness
+            camera.CFrame = camera.CFrame:Lerp(newCFrame, smoothness)
+        else
+            camera.CFrame = camera.CFrame:Lerp(newCFrame, Settings.CamLock.Smoothness)
+        end
     end)
 
     updateStatus()
