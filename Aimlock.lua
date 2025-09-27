@@ -18,15 +18,15 @@ end
 local Settings = {
     AimLock = {
         Enabled = false,
-        Sensitivity = 0.8,  -- Much faster lock-on
-        Prediction = 0.15,
+        Sensitivity = 0.1,
+        Prediction = 0.165,
         TargetPart = "Head"
     },
     CamLock = {
         Enabled = false,
-        Sensitivity = 0.7,  -- Much faster camera lock
-        Prediction = 0.18,
-        Smoothness = 0.25   -- Much faster smoothness
+        Sensitivity = 0.08,
+        Prediction = 0.2,
+        Smoothness = 0.03
     },
     MaxDistance = 200,
     WallCheck = false,
@@ -317,41 +317,9 @@ local function stopLocks()
     local character = getCharacter()
     if character and character:FindFirstChildOfClass("Humanoid") then
         character.Humanoid.AutoRotate = true
-        restorePhysics(character) -- Restore normal physics when unlocking
     end
     
     updateStatus()
-end
-
--- Prevent ragdoll/floating limbs
-local function preventRagdoll(character)
-    local humanoid = character:FindFirstChildOfClass("Humanoid")
-    if not humanoid then return end
-    
-    -- Disable problematic humanoid states
-    humanoid:SetStateEnabled(Enum.HumanoidStateType.Physics, false)
-    humanoid:SetStateEnabled(Enum.HumanoidStateType.Ragdoll, false)
-    humanoid:SetStateEnabled(Enum.HumanoidStateType.GettingUp, false)
-    humanoid:SetStateEnabled(Enum.HumanoidStateType.Seated, false)
-    humanoid:SetStateEnabled(Enum.HumanoidStateType.PlatformStanding, false)
-    
-    -- Keep character grounded and stable
-    if humanoid.PlatformStand then
-        humanoid.PlatformStand = false
-    end
-end
-
--- Restore normal physics
-local function restorePhysics(character)
-    local humanoid = character:FindFirstChildOfClass("Humanoid")
-    if not humanoid then return end
-    
-    -- Re-enable humanoid states
-    humanoid:SetStateEnabled(Enum.HumanoidStateType.Physics, true)
-    humanoid:SetStateEnabled(Enum.HumanoidStateType.Ragdoll, true)
-    humanoid:SetStateEnabled(Enum.HumanoidStateType.GettingUp, true)
-    humanoid:SetStateEnabled(Enum.HumanoidStateType.Seated, true)
-    humanoid:SetStateEnabled(Enum.HumanoidStateType.PlatformStanding, true)
 end
 
 -- Start aimlock
@@ -372,31 +340,13 @@ local function startAimlock()
     local character = getCharacter()
     if character and character:FindFirstChildOfClass("Humanoid") then
         character.Humanoid.AutoRotate = false
-        preventRagdoll(character) -- Prevent physics conflicts
     end
 
-    connections.aimlock = RunService.RenderStepped:Connect(function()
+    connections.aimlock = RunService.Heartbeat:Connect(function()
         local character = getCharacter()
         if not character or not character:FindFirstChild("HumanoidRootPart") then
             stopLocks()
             return
-        end
-
-        local humanoid = character:FindFirstChildOfClass("Humanoid")
-        if not humanoid then
-            stopLocks()
-            return
-        end
-
-        -- Keep preventing ragdoll during aimlock
-        if humanoid.PlatformStand then
-            humanoid.PlatformStand = false
-        end
-        
-        -- Force humanoid to standing/running state
-        if humanoid:GetState() == Enum.HumanoidStateType.Physics or 
-           humanoid:GetState() == Enum.HumanoidStateType.Ragdoll then
-            humanoid:ChangeState(Enum.HumanoidStateType.Running)
         end
 
         if not target or not target:FindFirstChild("HumanoidRootPart") then
@@ -415,21 +365,11 @@ local function startAimlock()
         local velocity = targetHrp.AssemblyLinearVelocity
         local predictedPosition = targetPart.Position + (velocity * Settings.AimLock.Prediction)
 
-        -- Smooth rotation that preserves character physics
+        -- Smooth rotation
         local direction = (Vector3.new(predictedPosition.X, hrp.Position.Y, predictedPosition.Z) - hrp.Position).Unit
         local newCFrame = CFrame.new(hrp.Position, hrp.Position + direction)
         
-        -- Much faster lock-on with instant snap for close targets
-        local distance = (hrp.Position - targetHrp.Position).Magnitude
-        local sensitivity = distance < 50 and 1 or Settings.AimLock.Sensitivity
-        
-        -- Use AssemblyLinearVelocity instead of direct CFrame for smoother physics
-        hrp.CFrame = hrp.CFrame:Lerp(newCFrame, sensitivity)
-        
-        -- Ensure character stays grounded
-        if hrp.AssemblyLinearVelocity.Y > 50 then
-            hrp.AssemblyLinearVelocity = Vector3.new(hrp.AssemblyLinearVelocity.X, 0, hrp.AssemblyLinearVelocity.Z)
-        end
+        hrp.CFrame = hrp.CFrame:Lerp(newCFrame, Settings.AimLock.Sensitivity)
     end)
 
     updateStatus()
@@ -450,7 +390,7 @@ local function startCamlock()
 
     Settings.CamLock.Enabled = true
 
-    connections.camlock = RunService.RenderStepped:Connect(function()
+    connections.camlock = RunService.Heartbeat:Connect(function()
         if not target or not target:FindFirstChild("HumanoidRootPart") then
             target = getClosestPlayer()
             if not target then
@@ -466,18 +406,9 @@ local function startCamlock()
         local velocity = targetHrp.AssemblyLinearVelocity
         local predictedPosition = targetPart.Position + (velocity * Settings.CamLock.Prediction)
 
-        -- Fast, responsive camera movement
+        -- Smooth camera movement
         local newCFrame = CFrame.new(camera.CFrame.Position, predictedPosition)
-        
-        -- Distance-based sensitivity for instant snap on close targets
-        local character = getCharacter()
-        if character and character:FindFirstChild("HumanoidRootPart") then
-            local distance = (character.HumanoidRootPart.Position - targetHrp.Position).Magnitude
-            local smoothness = distance < 50 and 1 or Settings.CamLock.Smoothness
-            camera.CFrame = camera.CFrame:Lerp(newCFrame, smoothness)
-        else
-            camera.CFrame = camera.CFrame:Lerp(newCFrame, Settings.CamLock.Smoothness)
-        end
+        camera.CFrame = camera.CFrame:Lerp(newCFrame, Settings.CamLock.Smoothness)
     end)
 
     updateStatus()
