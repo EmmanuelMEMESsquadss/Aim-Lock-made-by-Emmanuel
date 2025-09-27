@@ -1,11 +1,10 @@
 -- LocalScript (StarterPlayerScripts)
--- ADVANCED Mobile Aimbot/Camlock with Professional Smoothing
+-- WORKING Mobile Aimbot/Camlock with Minimizable UI
 
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local UserInputService = game:GetService("UserInputService")
 local TweenService = game:GetService("TweenService")
-local Stats = game:GetService("Stats")
 
 local player = Players.LocalPlayer
 local camera = workspace.CurrentCamera
@@ -15,136 +14,27 @@ if not UserInputService.TouchEnabled then
     return
 end
 
--- Advanced Settings
+-- Settings
 local Settings = {
     AimLock = {
         Enabled = false,
-        Smoothness = 0.85,
-        Prediction = 0.165,
-        TargetPart = "Head",
-        Acceleration = 1.2,
-        MaxTurnSpeed = 15,
-        EasingStyle = "Exponential"
+        Sensitivity = 0.8,  -- Much faster lock-on
+        Prediction = 0.15,
+        TargetPart = "Head"
     },
     CamLock = {
         Enabled = false,
-        Smoothness = 0.75,
-        Prediction = 0.185,
-        Acceleration = 1.35,
-        MaxTurnSpeed = 12,
-        Shake = false,
-        ShakeIntensity = 2,
-        EasingStyle = "Sine"
+        Sensitivity = 0.7,  -- Much faster camera lock
+        Prediction = 0.18,
+        Smoothness = 0.25   -- Much faster smoothness
     },
-    MaxDistance = 180,
-    WallCheck = true,
-    TeamCheck = false,
-    AntiDetection = {
-        Enabled = true,
-        Randomization = 0.08,
-        HumanizeDelay = true,
-        SmoothTransitions = true
-    }
+    MaxDistance = 200,
+    WallCheck = false,
+    TeamCheck = false
 }
 
 local target = nil
 local connections = {}
-local lastUpdateTime = 0
-local smoothingData = {
-    lastPosition = Vector3.new(),
-    velocity = Vector3.new(),
-    acceleration = Vector3.new()
-}
-
--- Get network ping for advanced prediction
-local function getPing()
-    local ping = Stats.Network.ServerStatsItem["Data Ping"]:GetValue()
-    return math.max(ping, 20) / 1000 -- Convert to seconds, minimum 20ms
-end
-
--- Advanced easing functions
-local EasingFunctions = {
-    Exponential = function(t) return t == 0 and 0 or 2^(10 * (t - 1)) end,
-    Sine = function(t) return -math.cos(t * (math.pi / 2)) + 1 end,
-    Cubic = function(t) return t^3 end,
-    Quartic = function(t) return t^4 end,
-    Back = function(t) 
-        local c1, c3 = 1.70158, 2.70158
-        return c3 * t^3 - c1 * t^2
-    end
-}
-
--- Multi-layer smoothing algorithm
-local function advancedSmooth(currentPos, targetPos, smoothness, easing, deltaTime, maxSpeed)
-    local distance = (targetPos - currentPos).Magnitude
-    local direction = (targetPos - currentPos).Unit
-    
-    -- Distance-based acceleration
-    local accelerationFactor = math.min(distance / 50, 2)
-    local dynamicSmoothness = smoothness * accelerationFactor
-    
-    -- Apply easing function
-    local easingFunc = EasingFunctions[easing] or EasingFunctions.Exponential
-    local easedSmoothness = easingFunc(dynamicSmoothness)
-    
-    -- Speed limiting
-    local maxDelta = maxSpeed * deltaTime
-    local desiredDelta = direction * math.min(distance * easedSmoothness, maxDelta)
-    
-    -- Anti-detection randomization
-    if Settings.AntiDetection.Enabled then
-        local randomOffset = Vector3.new(
-            (math.random() - 0.5) * Settings.AntiDetection.Randomization,
-            (math.random() - 0.5) * Settings.AntiDetection.Randomization,
-            (math.random() - 0.5) * Settings.AntiDetection.Randomization
-        )
-        desiredDelta = desiredDelta + randomOffset
-    end
-    
-    return currentPos + desiredDelta
-end
-
--- Enhanced prediction system
-local function advancedPrediction(targetHRP, predictionStrength)
-    local velocity = targetHRP.AssemblyLinearVelocity
-    local ping = getPing()
-    
-    -- Multi-factor prediction
-    local basePrediction = velocity * predictionStrength
-    local pingCompensation = velocity * ping
-    local accelerationPrediction = Vector3.new()
-    
-    -- Calculate acceleration if we have previous data
-    local currentTime = tick()
-    if smoothingData.lastPosition ~= Vector3.new() then
-        local timeDelta = currentTime - lastUpdateTime
-        if timeDelta > 0 then
-            local currentVelocity = (targetHRP.Position - smoothingData.lastPosition) / timeDelta
-            smoothingData.acceleration = (currentVelocity - smoothingData.velocity) / timeDelta
-            accelerationPrediction = smoothingData.acceleration * (predictionStrength * 0.5)
-            smoothingData.velocity = currentVelocity
-        end
-    end
-    
-    smoothingData.lastPosition = targetHRP.Position
-    lastUpdateTime = currentTime
-    
-    return basePrediction + pingCompensation + accelerationPrediction
-end
-
--- Improved wall check with ray casting
-local function hasLineOfSight(origin, destination)
-    if not Settings.WallCheck then return true end
-    
-    local direction = destination - origin
-    local raycastParams = RaycastParams.new()
-    raycastParams.FilterDescendantsInstances = {player.Character, target}
-    raycastParams.FilterType = Enum.RaycastFilterType.Blacklist
-    raycastParams.IgnoreWater = true
-    
-    local raycast = workspace:Raycast(origin, direction, raycastParams)
-    return raycast == nil
-end
 
 -- Target functions
 local function getCharacter()
@@ -171,10 +61,8 @@ local function getClosestPlayer()
                 
                 if distance < shortestDistance then
                     if not Settings.TeamCheck or v.Team ~= player.Team then
-                        if hasLineOfSight(hrp.Position, enemyHrp.Position) then
-                            shortestDistance = distance
-                            closest = v.Character
-                        end
+                        shortestDistance = distance
+                        closest = v.Character
                     end
                 end
             end
@@ -198,7 +86,7 @@ local function createUI()
     miniButton.Position = UDim2.new(0, 20, 0.5, -25)
     miniButton.BackgroundColor3 = Color3.fromRGB(35, 35, 35)
     miniButton.BorderSizePixel = 0
-    miniButton.Text = "🎯"
+    miniButton.Text = "ðŸŽ¯"
     miniButton.TextColor3 = Color3.new(1, 1, 1)
     miniButton.TextSize = 20
     miniButton.Font = Enum.Font.GothamBold
@@ -255,7 +143,7 @@ local function createUI()
     title.Size = UDim2.new(1, -30, 1, 0)
     title.Position = UDim2.new(0, 5, 0, 0)
     title.BackgroundTransparency = 1
-    title.Text = "LOCK PRO"
+    title.Text = "LOCK"
     title.TextColor3 = Color3.new(1, 1, 1)
     title.TextSize = 14
     title.Font = Enum.Font.GothamBold
@@ -267,7 +155,7 @@ local function createUI()
     minimizeBtn.Position = UDim2.new(1, -30, 0, 5)
     minimizeBtn.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
     minimizeBtn.BorderSizePixel = 0
-    minimizeBtn.Text = "−"
+    minimizeBtn.Text = "âˆ’"
     minimizeBtn.TextColor3 = Color3.new(1, 1, 1)
     minimizeBtn.TextSize = 16
     minimizeBtn.Font = Enum.Font.GothamBold
@@ -328,6 +216,7 @@ local function createUI()
         if isMinimized then return end
         isMinimized = true
         
+        -- Animate main frame shrinking
         local shrinkTween = TweenService:Create(
             mainFrame,
             TweenInfo.new(0.3, Enum.EasingStyle.Back, Enum.EasingDirection.In),
@@ -341,6 +230,7 @@ local function createUI()
         miniButton.Visible = true
         miniButton.Size = UDim2.new(0, 0, 0, 0)
         
+        -- Animate mini button growing
         local growTween = TweenService:Create(
             miniButton,
             TweenInfo.new(0.3, Enum.EasingStyle.Back, Enum.EasingDirection.Out),
@@ -354,6 +244,7 @@ local function createUI()
         if not isMinimized then return end
         isMinimized = false
         
+        -- Animate mini button shrinking
         local shrinkTween = TweenService:Create(
             miniButton,
             TweenInfo.new(0.2, Enum.EasingStyle.Back, Enum.EasingDirection.In),
@@ -367,6 +258,7 @@ local function createUI()
         mainFrame.Visible = true
         mainFrame.Size = UDim2.new(0, 0, 0, 0)
         
+        -- Animate main frame growing
         local growTween = TweenService:Create(
             mainFrame,
             TweenInfo.new(0.3, Enum.EasingStyle.Back, Enum.EasingDirection.Out),
@@ -394,12 +286,12 @@ local ui = createUI()
 -- Update UI status
 local function updateStatus()
     if Settings.AimLock.Enabled then
-        ui.status.Text = "🎯 AIM LOCKED"
+        ui.status.Text = "ðŸŽ¯ AIM LOCKED"
         ui.status.TextColor3 = Color3.fromRGB(255, 200, 0)
         ui.aimlockBtn.BackgroundColor3 = Color3.fromRGB(255, 200, 0)
         ui.camlockBtn.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
     elseif Settings.CamLock.Enabled then
-        ui.status.Text = "📹 CAM LOCKED"
+        ui.status.Text = "ðŸ“¹ CAM LOCKED"
         ui.status.TextColor3 = Color3.fromRGB(0, 200, 255)
         ui.camlockBtn.BackgroundColor3 = Color3.fromRGB(0, 200, 255)
         ui.aimlockBtn.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
@@ -417,11 +309,6 @@ local function stopLocks()
     Settings.CamLock.Enabled = false
     target = nil
     
-    -- Reset smoothing data
-    smoothingData.lastPosition = Vector3.new()
-    smoothingData.velocity = Vector3.new()
-    smoothingData.acceleration = Vector3.new()
-    
     for _, connection in pairs(connections) do
         connection:Disconnect()
     end
@@ -435,7 +322,7 @@ local function stopLocks()
     updateStatus()
 end
 
--- Advanced aimlock with professional smoothing
+-- Start aimlock
 local function startAimlock()
     stopLocks()
     
@@ -455,7 +342,6 @@ local function startAimlock()
         character.Humanoid.AutoRotate = false
     end
 
-    local lastTime = tick()
     connections.aimlock = RunService.RenderStepped:Connect(function()
         local character = getCharacter()
         if not character or not character:FindFirstChild("HumanoidRootPart") then
@@ -475,37 +361,25 @@ local function startAimlock()
         local targetHrp = target.HumanoidRootPart
         local targetPart = target:FindFirstChild(Settings.AimLock.TargetPart) or targetHrp
 
-        -- Advanced prediction
-        local predictionVector = advancedPrediction(targetHrp, Settings.AimLock.Prediction)
-        local predictedPosition = targetPart.Position + predictionVector
+        -- Calculate prediction
+        local velocity = targetHrp.AssemblyLinearVelocity
+        local predictedPosition = targetPart.Position + (velocity * Settings.AimLock.Prediction)
 
-        -- Current time for delta calculations
-        local currentTime = tick()
-        local deltaTime = currentTime - lastTime
-        lastTime = currentTime
-
-        -- Advanced smoothing with professional algorithm
-        local currentLookDirection = hrp.CFrame.LookVector
-        local currentPosition = hrp.Position
-        local targetDirection = (Vector3.new(predictedPosition.X, currentPosition.Y, predictedPosition.Z) - currentPosition).Unit
+        -- Fast, responsive rotation
+        local direction = (Vector3.new(predictedPosition.X, hrp.Position.Y, predictedPosition.Z) - hrp.Position).Unit
+        local newCFrame = CFrame.new(hrp.Position, hrp.Position + direction)
         
-        local smoothedDirection = advancedSmooth(
-            currentLookDirection,
-            targetDirection,
-            Settings.AimLock.Smoothness,
-            Settings.AimLock.EasingStyle,
-            deltaTime,
-            Settings.AimLock.MaxTurnSpeed
-        )
+        -- Much faster lock-on with instant snap for close targets
+        local distance = (hrp.Position - targetHrp.Position).Magnitude
+        local sensitivity = distance < 50 and 1 or Settings.AimLock.Sensitivity
         
-        local newCFrame = CFrame.new(currentPosition, currentPosition + smoothedDirection)
-        hrp.CFrame = newCFrame
+        hrp.CFrame = hrp.CFrame:Lerp(newCFrame, sensitivity)
     end)
 
     updateStatus()
 end
 
--- Advanced camlock with shake and professional smoothing
+-- Start camlock
 local function startCamlock()
     stopLocks()
     
@@ -520,7 +394,6 @@ local function startCamlock()
 
     Settings.CamLock.Enabled = true
 
-    local lastTime = tick()
     connections.camlock = RunService.RenderStepped:Connect(function()
         if not target or not target:FindFirstChild("HumanoidRootPart") then
             target = getClosestPlayer()
@@ -533,39 +406,22 @@ local function startCamlock()
         local targetHrp = target.HumanoidRootPart
         local targetPart = target:FindFirstChild(Settings.AimLock.TargetPart) or targetHrp
 
-        -- Advanced prediction
-        local predictionVector = advancedPrediction(targetHrp, Settings.CamLock.Prediction)
-        local predictedPosition = targetPart.Position + predictionVector
+        -- Calculate prediction
+        local velocity = targetHrp.AssemblyLinearVelocity
+        local predictedPosition = targetPart.Position + (velocity * Settings.CamLock.Prediction)
 
-        -- Add camera shake if enabled
-        if Settings.CamLock.Shake then
-            local shakeX = (math.random() - 0.5) * Settings.CamLock.ShakeIntensity
-            local shakeY = (math.random() - 0.5) * Settings.CamLock.ShakeIntensity
-            local shakeZ = (math.random() - 0.5) * Settings.CamLock.ShakeIntensity
-            predictedPosition = predictedPosition + Vector3.new(shakeX, shakeY, shakeZ)
+        -- Fast, responsive camera movement
+        local newCFrame = CFrame.new(camera.CFrame.Position, predictedPosition)
+        
+        -- Distance-based sensitivity for instant snap on close targets
+        local character = getCharacter()
+        if character and character:FindFirstChild("HumanoidRootPart") then
+            local distance = (character.HumanoidRootPart.Position - targetHrp.Position).Magnitude
+            local smoothness = distance < 50 and 1 or Settings.CamLock.Smoothness
+            camera.CFrame = camera.CFrame:Lerp(newCFrame, smoothness)
+        else
+            camera.CFrame = camera.CFrame:Lerp(newCFrame, Settings.CamLock.Smoothness)
         end
-
-        -- Current time for delta calculations
-        local currentTime = tick()
-        local deltaTime = currentTime - lastTime
-        lastTime = currentTime
-
-        -- Advanced camera smoothing
-        local currentCameraPosition = camera.CFrame.Position
-        local currentLookDirection = camera.CFrame.LookVector
-        local targetDirection = (predictedPosition - currentCameraPosition).Unit
-        
-        local smoothedDirection = advancedSmooth(
-            currentLookDirection,
-            targetDirection,
-            Settings.CamLock.Smoothness,
-            Settings.CamLock.EasingStyle,
-            deltaTime,
-            Settings.CamLock.MaxTurnSpeed
-        )
-        
-        local newCFrame = CFrame.new(currentCameraPosition, currentCameraPosition + smoothedDirection)
-        camera.CFrame = newCFrame
     end)
 
     updateStatus()
@@ -620,5 +476,5 @@ end)
 -- Initialize
 updateStatus()
 
-print("Advanced Mobile Lock System loaded!")
-print("Features: Professional Smoothing, Advanced Prediction, Anti-Detection")
+print("Mobile Lock System loaded successfully!")
+print("Features: Minimizable UI, Working Aimlock, Working Camlock")
