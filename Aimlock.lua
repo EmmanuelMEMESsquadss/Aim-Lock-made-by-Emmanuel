@@ -1,17 +1,8 @@
 --[[
-    Script: Advanced Server Hop Utility v3
-    Library: Rayfield UI
-    Purpose: Bloxstrap-inspired server hop utility.
-             Features:
-             - Server Hop (Random, Smallest)
-             - Server Region/Location Finder
-             - Ping & FPS Display
-             - Auto-Hop (by Ping)
-             - Rejoin (Current, Previous, by ID)
+    Script: Advanced Server Hop Utility v4 (Mobile Compatible)
+    Library: Orion UI (Designed for mobile executors like Arceus X)
+    Purpose: A mobile-friendly version of the server hop utility.
 ]]
-
--- Load Rayfield Library
-local Rayfield = loadstring(game:HttpGet('https://raw.githubusercontent.com/shlexware/Rayfield/main/source'))()
 
 --==============================================================================
 -- Services & Globals
@@ -32,56 +23,63 @@ _G.LastServerJobId = _G.LastServerJobId or nil
 -- Helper Functions
 --==============================================================================
 local function SaveCurrentJobId()
-    -- Store the current JobId as the "last" one before we hop
     _G.LastServerJobId = CurrentJobId
 end
 
 local function Teleport(hopFunction, ...)
-    -- This wrapper function saves our current JobId *before*
-    -- any teleport is initiated.
     SaveCurrentJobId()
     pcall(hopFunction, ...)
 end
 
+local function Notify(Title, Text)
+    -- Orion has a built-in notification system
+    OrionLib:MakeNotification({
+        Name = Title,
+        Content = Text,
+        Image = "rbxassetid://4483362458", -- Default icon
+        Time = 5
+    })
+end
+
 --==============================================================================
--- Main Window
+-- Load Orion Library & Create Window
 --==============================================================================
 
-local Window = Rayfield:CreateWindow({
+local OrionLib = loadstring(game:HttpGet(('https://raw.githubusercontent.com/shlexware/Orion/main/source')))()
+local Window = OrionLib:MakeWindow({
     Name = "Advanced Server Hop",
-    LoadingTitle = "Loading Utility...",
-    LoadingSubtitle = "by " .. LocalPlayer.Name,
-    ConfigurationSaving = {
-        Enabled = true,
-        FolderName = "ServerHopConfig",
-        FileName = "AdvancedHopperV3"
-    }
+    HidePremium = false,
+    SaveConfig = true,
+    ConfigFolder = "OrionHopConfig",
+    IntroText = "Mobile Server Hop",
+    IntroIcon = "rbxassetid://4483362458"
 })
 
 --==============================================================================
 -- Main Tab (Hopping)
 --==============================================================================
 
-local HopTab = Window:CreateTab("Server Hop", 4483362458)
-
-HopTab:CreateSection("Quick Hops")
-
--- Button: Hop to a random server
-HopTab:CreateButton({
-    Name = "Hop to Random Server",
-    Callback = function()
-        Rayfield:Notify({ Title = "Hopping", Content = "Finding a random server..." })
-        Teleport(TeleportService.Teleport, TeleportService, CurrentPlaceId, LocalPlayer)
-    end,
+local HopTab = Window:MakeTab({
+    Name = "Server Hop",
+    Icon = "rbxassetid://4483362458",
+    PremiumOnly = false
 })
 
--- Button: Hop to the smallest server
-HopTab:CreateButton({
+HopTab:AddSection("Quick Hops")
+
+HopTab:AddButton({
+    Name = "Hop to Random Server",
+    Callback = function()
+        Notify("Hopping", "Finding a random server...")
+        Teleport(TeleportService.Teleport, TeleportService, CurrentPlaceId, LocalPlayer)
+    end
+})
+
+HopTab:AddButton({
     Name = "Hop to Smallest Server",
     Callback = function()
-        Rayfield:Notify({ Title = "Hopping", Content = "Finding smallest server..." })
+        Notify("Hopping", "Finding smallest server...")
         
-        -- Use our Teleport wrapper for the API call
         Teleport(function()
             local url = "https://games.roblox.com/v1/games/" .. CurrentPlaceId .. "/servers/Public?sortOrder=Asc&limit=10"
             local success, response = pcall(HttpService.GetAsync, HttpService, url)
@@ -92,135 +90,164 @@ HopTab:CreateButton({
                     local smallestServerJobId = serverData.data[1].id
                     TeleportService:TeleportToPlaceInstance(CurrentPlaceId, smallestServerJobId, LocalPlayer)
                 else
-                    Rayfield:Notify({ Title = "Error", Content = "Could not find server. Hopping random." })
+                    Notify("Error", "Could not find server. Hopping random.")
                     TeleportService:Teleport(CurrentPlaceId, LocalPlayer)
                 end
             else
-                Rayfield:Notify({ Title = "HTTP Error", Content = "Hopping to random server." })
+                Notify("HTTP Error", "Hopping to random server.")
                 TeleportService:Teleport(CurrentPlaceId, LocalPlayer)
             end
         end)
-    end,
+    end
 })
 
-HopTab:CreateSection("Rejoin")
+HopTab:AddSection("Rejoin")
 
--- Button: Rejoin the current server
-HopTab:CreateButton({
+HopTab:AddButton({
     Name = "Rejoin Current Server",
     Callback = function()
-        Rayfield:Notify({ Title = "Rejoining", Content = "Rejoining this server..." })
-        -- No need to save JobId here, we're coming right back
+        Notify("Rejoining", "Rejoining this server...")
         pcall(TeleportService.TeleportToPlaceInstance, TeleportService, CurrentPlaceId, CurrentJobId, LocalPlayer)
-    end,
+    end
 })
 
--- Button: Rejoin the *previous* server
-HopTab:CreateButton({
+HopTab:AddButton({
     Name = "Rejoin Previous Server",
     Callback = function()
         if _G.LastServerJobId then
-            Rayfield:Notify({ Title = "Rejoining", Content = "Joining previous server..." })
-            local tempJobId = CurrentJobId -- Save current in case we want to come back
+            Notify("Rejoining", "Joining previous server...")
+            local tempJobId = CurrentJobId
             pcall(TeleportService.TeleportToPlaceInstance, TeleportService, CurrentPlaceId, _G.LastServerJobId, LocalPlayer)
-            _G.LastServerJobId = tempJobId -- Update the "last" id to where we just left
+            _G.LastServerJobId = tempJobId
         else
-            Rayfield:Notify({ Title = "Error", Content = "No previous server saved." })
+            Notify("Error", "No previous server saved.")
         end
-    end,
+    end
 })
 
-HopTab:CreateSection("Specific Hop")
+HopTab:AddSection("Specific Hop")
 
-local JobIdInput = HopTab:CreateInput({
+local JobIdInput -- Declare it here
+
+HopTab:AddTextbox({
     Name = "Job ID",
-    PlaceholderText = "Enter server Job ID here...",
-    RemoveTextAfterFocusLost = false,
-    Callback = function(Text) end,
+    Text = "Enter Job ID...",
+    Default = "",
+    Callback = function(Text)
+        -- In Orion, the textbox callback *is* the input.
+        -- We'll store it in our variable.
+        JobIdInput = Text
+    end
 })
 
-HopTab:CreateButton({
+HopTab:AddButton({
     Name = "Hop to Job ID",
     Callback = function()
-        local targetJobId = JobIdInput:GetText()
-        if targetJobId and targetJobId ~= "" then
-            Rayfield:Notify({ Title = "Specific Hop", Content = "Joining Job ID..." })
-            Teleport(TeleportService.TeleportToPlaceInstance, TeleportService, CurrentPlaceId, targetJobId, LocalPlayer)
+        if JobIdInput and JobIdInput ~= "" then
+            Notify("Specific Hop", "Joining Job ID...")
+            Teleport(TeleportService.TeleportToPlaceInstance, TeleportService, CurrentPlaceId, JobIdInput, LocalPlayer)
         else
-            Rayfield:Notify({ Title = "Error", Content = "Please enter a Job ID." })
+            Notify("Error", "Please enter a Job ID.")
         end
-    end,
+    end
 })
 
 --==============================================================================
 -- Performance Tab
 --==============================================================================
 
-local PerformanceTab = Window:CreateTab("Performance", 3000898399) -- Stats icon
+local PerformanceTab = Window:MakeTab({
+    Name = "Performance",
+    Icon = "rbxassetid://3000898399",
+    PremiumOnly = false
+})
 
-PerformanceTab:CreateSection("Live Stats")
+PerformanceTab:AddSection("Live Stats")
 
-local PingLabel = PerformanceTab:CreateLabel("Current Ping: Fetching...")
-local FPSLabel = PerformanceTab:CreateLabel("Current FPS: Fetching...")
+-- Orion doesn't have a simple "Label" that we can update.
+-- We will use a Toggle to display the info, which is a common mobile UI workaround.
+local PingLabel = PerformanceTab:AddToggle({
+    Name = "Current Ping: Fetching...",
+    Default = false,
+    Callback = function() end
+})
+-- Disable the toggle from being clicked
+PingLabel.Toggle.Interactable = false 
 
-PerformanceTab:CreateSection("Server Location (Bloxstrap Feature)")
-local RegionLabel = PerformanceTab:CreateLabel("Server Region: (Click 'Fetch')")
+local FPSLabel = PerformanceTab:AddToggle({
+    Name = "Current FPS: Fetching...",
+    Default = false,
+    Callback = function() end
+})
+FPSLabel.Toggle.Interactable = false
 
--- Button to manually fetch the server location
-PerformanceTab:CreateButton({
+PerformanceTab:AddSection("Server Location (Bloxstrap Feature)")
+
+local RegionLabel = PerformanceTab:AddToggle({
+    Name = "Server Region: (Click 'Fetch')",
+    Default = false,
+    Callback = function() end
+})
+RegionLabel.Toggle.Interactable = false
+
+PerformanceTab:AddButton({
     Name = "Fetch Server Location",
     Callback = function()
-        RegionLabel:Set("Server Region: Fetching...")
+        RegionLabel.Name = "Server Region: Fetching..."
+        RegionLabel:Update() -- Update the label text
         
-        -- We use an external IP info API. This is the same method Bloxstrap uses.
-        -- We get our IP, which will be the *server's* IP, not our own.
         local success, response = pcall(HttpService.GetAsync, HttpService, "https://ipinfo.io/json")
         
         if success then
             local data = HttpService:JSONDecode(response)
             if data and data.region and data.country then
-                RegionLabel:Set("Region: " .. data.region .. ", " .. data.country .. " ("..data.city..")")
-                Rayfield:Notify({ Title = "Location Found", Content = "Server is in " .. data.city .. ", " .. data.country })
+                local locText = "Region: " .. data.region .. ", " .. data.country
+                RegionLabel.Name = locText
+                RegionLabel:Update()
+                Notify("Location Found", "Server is in " .. data.city .. ", " .. data.country)
             else
-                RegionLabel:Set("Server Region: Error decoding response.")
+                RegionLabel.Name = "Server Region: Error decoding."
+                RegionLabel:Update()
             end
         else
-            RegionLabel:Set("Server Region: API request failed.")
-            Rayfield:Notify({ Title = "Error", Content = "Could not fetch server location." })
+            RegionLabel.Name = "Server Region: API failed."
+            RegionLabel:Update()
+            Notify("Error", "Could not fetch server location.")
         end
-    end,
+    end
 })
 
-PerformanceTab:CreateSection("Auto-Hop (Based on Ping)")
+PerformanceTab:AddSection("Auto-Hop (Based on Ping)")
 
-PerformanceTab:CreateLabel("Ping Tiers (Ideal < 120ms)")
+local PingThreshold = 120 -- Default value
 
-local PingThreshold = PerformanceTab:CreateSlider({
+PerformanceTab:AddSlider({
     Name = "Max Ping Threshold (ms)",
-    Range = {50, 300},
-    Increment = 10,
-    Suffix = "ms",
+    Min = 50,
+    Max = 300,
     Default = 120,
-    Value = 120,
-    Callback = function(Value) end,
+    Color = Color3.fromRGB(0, 255, 255),
+    Increment = 10,
+    ValueName = "ms",
+    Callback = function(Value)
+        PingThreshold = Value
+    end
 })
 
-_G.AutoHopping = false
-
-PerformanceTab:CreateToggle({
+PerformanceTab:AddToggle({
     Name = "Auto-Hop when Ping > Threshold",
     Default = false,
     Callback = function(State)
         _G.AutoHopping = State
         
         if State then
-            Rayfield:Notify({ Title = "Auto-Hop Enabled", Content = "Will hop if ping > " .. PingThreshold.Value .. " ms." })
+            Notify("Auto-Hop Enabled", "Will hop if ping > " .. PingThreshold .. " ms.")
             task.spawn(function()
                 while _G.AutoHopping do
                     local currentPing = math.floor(Stats.Network.Ping:GetValue() * 1000)
-                    if currentPing > PingThreshold.Value then
+                    if currentPing > PingThreshold then
                         _G.AutoHopping = false
-                        Rayfield:Notify({ Title = "Bad Ping!", Content = "Hopping... (" .. currentPing .. " ms)" })
+                        Notify("Bad Ping!", "Hopping... (" .. currentPing .. " ms)")
                         Teleport(TeleportService.Teleport, TeleportService, CurrentPlaceId, LocalPlayer)
                         break
                     end
@@ -228,26 +255,27 @@ PerformanceTab:CreateToggle({
                 end
             end)
         else
-            Rayfield:Notify({ Title = "Auto-Hop Disabled", Content = "Manual hopping only." })
+            Notify("Auto-Hop Disabled", "Manual hopping only.")
         end
-    end,
+    end
 })
 
 --==============================================================================
--- Stats Update Loop (Runs in background)
+-- Stats Update Loop
 --==============================================================================
 
 task.spawn(function()
     while task.wait(1) do
-        -- Check if the labels exist (Window might be closed)
-        if not (PingLabel and PingLabel.Visible) then continue end
-        
-        -- Get Ping
-        local currentPing = math.floor(Stats.Network.Ping:GetValue() * 1000)
-        PingLabel:Set("Current Ping: " .. tostring(currentPing) .. " ms")
-        
-        -- Get FPS
-        local currentFPS = math.floor(Stats.Performance.FPS:GetValue())
-        FPSLabel:Set("Current FPS: " .. tostring(currentFPS))
+        pcall(function()
+            -- Get Ping
+            local currentPing = math.floor(Stats.Network.Ping:GetValue() * 1000)
+            PingLabel.Name = "Current Ping: " .. tostring(currentPing) .. " ms"
+            PingLabel:Update()
+            
+            -- Get FPS
+            local currentFPS = math.floor(Stats.Performance.FPS:GetValue())
+            FPSLabel.Name = "Current FPS: " .. tostring(currentFPS)
+            FPSLabel:Update()
+        end)
     end
 end)
