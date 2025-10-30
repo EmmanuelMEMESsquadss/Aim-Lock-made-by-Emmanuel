@@ -1,10 +1,12 @@
 --[[
-    Script: Aim-Spy System (v3 - Pro Features)
-    Purpose: A passive, read-only aim-assist logic system.
-             - Adds Visibility Check (Raycast)
-             - Adds Target Priority (Crosshair, Distance)
-             - Adds a client-side FOV Circle
-    Library: Rayfield UI
+    Script: Aim-Spy System (v5 - Max Range)
+    Purpose: A passive, mobile-first spy tool.
+             - NEW: Adds customizable "Max Range" (Studs) filter.
+             - NEW: Displays distance in "studs" not "m".
+             - No hotkey (toggle only)
+             - Target Info tab (Health, Distance, Tool)
+             - Threat Assessment
+    Library: Rayfield UI (sirius.menu)
 ]]
 
 --==============================================================================
@@ -16,7 +18,6 @@ local Rayfield = loadstring(game:HttpGet("https://sirius.menu/rayfield"))()
 -- Services & Globals
 --==============================================================================
 local Players = game:GetService("Players")
-local UserInputService = game:GetService("UserInputService")
 local RunService = game:GetService("RunService")
 local LocalPlayer = Players.LocalPlayer
 local Camera = workspace.CurrentCamera
@@ -26,19 +27,19 @@ local ScreenGui = Instance.new("ScreenGui")
 -- Configuration
 --==============================================================================
 local SETTINGS = {
-    SpyKey = Enum.KeyCode.F,
     AimPart = "HumanoidRootPart",
     VisCheck = true,
     Priority = "Crosshair", -- "Crosshair" or "Distance"
-    FOV_Size = 250, -- in pixels
+    FOV_Size = 250,
     FOV_Color = Color3.fromRGB(255, 255, 255),
-    FOV_Visible = true
+    FOV_Visible = true,
+    ThreatThreshold = 0.85,
+    MaxRange = 200 -- NEW: Default max range in studs
 }
 
 -- Global state variables
 local SpyEnabled = false
-local IsSpying = false
-local SpyStatusLabel = nil
+local SpyStatusLabel, TargetHealthLabel, TargetDistanceLabel, TargetToolLabel, ThreatLabel = nil, nil, nil, nil, nil
 local FOV_Circle = nil
 
 --==============================================================================
@@ -51,7 +52,7 @@ ScreenGui.Parent = game.Players.LocalPlayer:WaitForChild("PlayerGui")
 FOV_Circle = Instance.new("ImageLabel")
 FOV_Circle.Name = "FOV_Circle"
 FOV_Circle.Parent = ScreenGui
-FOV_Circle.Image = "rbxassetid://6348420387" -- A basic circle image
+FOV_Circle.Image = "rbxassetid://6348420387"
 FOV_Circle.ImageColor3 = SETTINGS.FOV_Color
 FOV_Circle.ImageTransparency = 0.75
 FOV_Circle.BackgroundTransparency = 1
@@ -89,36 +90,35 @@ local function getTargetPart(player)
     return nil
 end
 
---- NEW: Visibility Check
 local function isVisible(targetPart)
     local myChar = LocalPlayer.Character
     if not myChar then return false end
     
     local origin = Camera.CFrame.Position
-    local direction = (targetPart.Position - origin).Unit * 1000 -- 1000 studs range
+    local direction = (targetPart.Position - origin).Unit * (SETTINGS.MaxRange + 10)
     
     local params = RaycastParams.new()
     params.FilterType = Enum.RaycastFilterType.Exclude
-    params.FilterDescendantsInstances = {myChar} -- Ignore our own character
+    params.FilterDescendantsInstances = {myChar}
     
     local result = workspace:Raycast(origin, direction, params)
     
     if result and result.Instance then
-        -- It's visible if the ray hit the target's character
         return result.Instance:IsDescendantOf(targetPart.Parent)
     end
     return false
 end
 
-
---- UPDATED: findBestTarget (now includes all logic)
+--- UPDATED: findBestTarget (now includes Max Range)
 local function findBestTarget()
     local bestTarget = nil
     local bestPriority = math.huge
     local crosshairPos = Camera.ViewportSize / 2
     local myRoot = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
+    
+    if not myRoot then return nil end -- Need our own character to check range
 
-    for _, player in ipairs(Players:GetPlayers()) do
+    for _, player in ipairs(Players:GetPlayers())
         -- 1. FILTERING
         if player == LocalPlayer or not isAlive(player) or isTeammate(player) then
             continue
@@ -129,7 +129,13 @@ local function findBestTarget()
             continue
         end
 
-        -- 2. FOV & VISIBILITY CHECK
+        -- 2. NEW: MAX RANGE CHECK
+        local dist3D = (targetPart.Position - myRoot.Position).Magnitude
+        if dist3D > SETTINGS.MaxRange then
+            continue -- Target is too far
+        end
+
+        -- 3. FOV & VISIBILITY CHECK
         local screenPos, onScreen = Camera:WorldToViewportPoint(targetPart.Position)
         if not onScreen then
             continue
@@ -144,19 +150,17 @@ local function findBestTarget()
             continue -- Behind a wall
         end
 
-        -- 3. PRIORITIZATION
+        -- 4. PRIORITIZATION
         if SETTINGS.Priority == "Crosshair" then
             if distFromCrosshair < bestPriority then
                 bestPriority = distFromCrosshair
                 bestTarget = player
             end
         elseif SETTINGS.Priority == "Distance" then
-            if myRoot then
-                local dist3D = (targetPart.Position - myRoot.Position).Magnitude
-                if dist3D < bestPriority then
-                    bestPriority = dist3D
-                    bestTarget = player
-                end
+            -- We already calculated dist3D
+            if dist3D < bestPriority then
+                bestPriority = dist3D
+                bestTarget = player
             end
         end
     end
@@ -169,17 +173,23 @@ end
 --==============================================================================
 
 local Window = Rayfield:CreateWindow({
-    Name = "Aim-Spy System",
+    Name = "Aim-Spy Dashboard",
     LoadingTitle = "Loading System...",
     LoadingSubtitle = "by " .. LocalPlayer.Name,
     ConfigurationSaving = {
         Enabled = true,
         FolderName = "AimAssistConfig",
-        FileName = "AimSpyV3"
+        FileName = "AimSpyV5_Mobile"
     }
 })
 
-local MainTab = Window:CreateTab("Main", 4483362458)
+local MainTab = Window:CreateTab("Settings", 4483362458)
+local InfoTab = Window:CreateTab("Target Info", 3000898399)
+local FOVTab = Window:CreateTab("FOV", 5943224891)
+
+-- ===== Settings Tab =====
+
+MainTab:CreateSection("Core")
 
 MainTab:CreateToggle({
     Name = "Enable Aim-Spy",
@@ -187,11 +197,21 @@ MainTab:CreateToggle({
     Flag = "AimSpyToggle",
     Callback = function(Value)
         SpyEnabled = Value
-        if not Value then IsSpying = false end
     end
 })
 
-MainTab:CreateLabel("Hold [" .. SETTINGS.SpyKey.Name .. "] to spy.")
+-- NEW: Max Range Slider
+MainTab:CreateSlider({
+    Name = "Max Range (Studs)",
+    Range = {50, 1000},
+    Increment = 10,
+    Suffix = "studs",
+    Default = SETTINGS.MaxRange,
+    Value = SETTINGS.MaxRange,
+    Callback = function(Value)
+        SETTINGS.MaxRange = Value
+    end
+})
 
 MainTab:CreateDropdown({
     Name = "Target Part",
@@ -220,11 +240,22 @@ MainTab:CreateToggle({
     end
 })
 
-MainTab:CreateSection("FOV Circle")
+-- ===== Target Info Tab =====
 
-SpyStatusLabel = MainTab:CreateLabel("Status: IDLE (Hold " .. SETTINGS.SpyKey.Name .. ")")
+InfoTab:CreateSection("Spy Status")
+SpyStatusLabel = InfoTab:CreateLabel("Status: IDLE")
+ThreatLabel = InfoTab:CreateLabel("Threat: N/A")
 
-MainTab:CreateToggle({
+InfoTab:CreateSection("Live Data")
+TargetHealthLabel = InfoTab:CreateLabel("Health: N/A")
+TargetDistanceLabel = InfoTab:CreateLabel("Distance: N/A")
+TargetToolLabel = InfoTab:CreateLabel("Tool: N/A")
+
+-- ===== FOV Tab =====
+
+FOVTab:CreateSection("FOV Circle")
+
+FOVTab:CreateToggle({
     Name = "Show FOV Circle",
     CurrentValue = SETTINGS.FOV_Visible,
     Flag = "FOVToggle",
@@ -234,7 +265,7 @@ MainTab:CreateToggle({
     end
 })
 
-MainTab:CreateSlider({
+FOVTab:CreateSlider({
     Name = "FOV Circle Size",
     Range = {50, 500},
     Increment = 10,
@@ -247,7 +278,7 @@ MainTab:CreateSlider({
     end
 })
 
-MainTab:CreateColorPicker({
+FOVTab:CreateColorPicker({
     Name = "FOV Circle Color",
     Default = SETTINGS.FOV_Color,
     Callback = function(Value)
@@ -257,34 +288,62 @@ MainTab:CreateColorPicker({
 })
 
 --==============================================================================
--- Core Loop & Input Handlers
+-- Core Loop
 --==============================================================================
 
-UserInputService.InputBegan:Connect(function(input, gameProcessed)
-    if gameProcessed then return end
-    if input.KeyCode == SETTINGS.SpyKey then
-        IsSpying = true
-    end
-end)
+local function resetLabels()
+    SpyStatusLabel:Set("Status: IDLE")
+    ThreatLabel:Set("Threat: N/A")
+    TargetHealthLabel:Set("Health: N/A")
+    TargetDistanceLabel:Set("Distance: N/A")
+    TargetToolLabel:Set("Tool: N/A")
+end
 
-UserInputService.InputEnded:Connect(function(input)
-    if input.KeyCode == SETTINGS.SpyKey then
-        IsSpying = false
-        if SpyStatusLabel then
-            SpyStatusLabel:Set("Status: IDLE (Hold " .. SETTINGS.SpyKey.Name .. ")")
-        end
-    end
-end)
-
--- The main "spy" loop
 RunService.RenderStepped:Connect(function()
-    if IsSpying and SpyEnabled and SpyStatusLabel then
-        local TargetPlayer = findBestTarget() -- This returns the *Player* object
+    if not SpyEnabled or not SpyStatusLabel then
+        return
+    end
 
-        if TargetPlayer then
-            SpyStatusLabel:Set("Status: LOCKED (" .. TargetPlayer.Name .. ")")
-        else
-            SpyStatusLabel:Set("Status: CLEAR")
+    local TargetPlayer = findBestTarget()
+    local myRoot = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
+
+    if TargetPlayer and TargetPlayer.Character and myRoot then
+        local TargetChar = TargetPlayer.Character
+        local TargetPart = TargetChar:FindFirstChild(SETTINGS.AimPart)
+        local TargetHum = TargetChar:FindFirstChildOfClass("Humanoid")
+        
+        if not TargetPart or not TargetHum then
+            resetLabels()
+            return
         end
+
+        -- Update Status
+        SpyStatusLabel:Set("Status: LOCKED (" .. TargetPlayer.Name .. ")")
+
+        -- Update Live Data
+        TargetHealthLabel:Set("Health: " .. math.floor(TargetHum.Health) .. " / " .. math.floor(TargetHum.MaxHealth))
+        
+        -- FIXED: Display in studs
+        local dist = math.floor((TargetPart.Position - myRoot.Position).Magnitude)
+        TargetDistanceLabel:Set("Distance: " .. dist .. " studs")
+
+        -- Update Tool
+        local tool = TargetChar:FindFirstChildOfClass("Tool")
+        TargetToolLabel:Set("Tool: " .. (tool and tool.Name or "None"))
+
+        -- Update Threat
+        local targetLookVector = TargetPart.CFrame.LookVector
+        local toMe = (myRoot.Position - TargetPart.Position).Unit
+        local dot = targetLookVector:Dot(toMe)
+        
+        if dot > SETTINGS.ThreatThreshold then
+            ThreatLabel:Set("Threat: !! DANGER !!")
+        else
+            ThreatLabel:Set("Threat: Low")
+        end
+
+    else
+        -- No target found
+        resetLabels()
     end
 end)
