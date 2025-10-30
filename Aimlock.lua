@@ -1,18 +1,14 @@
 --[[
-    Script: Aim-Spy System (v5 - Max Range)
+    Script: Aim-Spy System (v6 - New Loadstring)
     Purpose: A passive, mobile-first spy tool.
-             - NEW: Adds customizable "Max Range" (Studs) filter.
-             - NEW: Displays distance in "studs" not "m".
-             - No hotkey (toggle only)
-             - Target Info tab (Health, Distance, Tool)
-             - Threat Assessment
-    Library: Rayfield UI (sirius.menu)
+             - Swapped to a different Rayfield loadstring URL.
+    Library: Rayfield UI (new source)
 ]]
 
 --==============================================================================
--- Load Rayfield Library
+-- Load Rayfield Library (Using a different common URL)
 --==============================================================================
-local Rayfield = loadstring(game:HttpGet("https://sirius.menu/rayfield"))()
+local Rayfield = loadstring(game:HttpGet("https://raw.githubusercontent.com/shlexware/Rayfield/main/source"))()
 
 --==============================================================================
 -- Services & Globals
@@ -34,7 +30,7 @@ local SETTINGS = {
     FOV_Color = Color3.fromRGB(255, 255, 255),
     FOV_Visible = true,
     ThreatThreshold = 0.85,
-    MaxRange = 200 -- NEW: Default max range in studs
+    MaxRange = 200 -- Max range in studs
 }
 
 -- Global state variables
@@ -47,7 +43,10 @@ local FOV_Circle = nil
 --==============================================================================
 ScreenGui.Name = "AimSpy_FOV_GUI"
 ScreenGui.ResetOnSpawn = false
-ScreenGui.Parent = game.Players.LocalPlayer:WaitForChild("PlayerGui")
+-- Wait for PlayerGui to be safe
+task.spawn(function()
+    ScreenGui.Parent = game.Players.LocalPlayer:WaitForChild("PlayerGui")
+end)
 
 FOV_Circle = Instance.new("ImageLabel")
 FOV_Circle.Name = "FOV_Circle"
@@ -109,17 +108,16 @@ local function isVisible(targetPart)
     return false
 end
 
---- UPDATED: findBestTarget (now includes Max Range)
+--- UPDATED: findBestTarget
 local function findBestTarget()
     local bestTarget = nil
     local bestPriority = math.huge
     local crosshairPos = Camera.ViewportSize / 2
     local myRoot = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
     
-    if not myRoot then return nil end -- Need our own character to check range
+    if not myRoot then return nil end
 
     for _, player in ipairs(Players:GetPlayers())
-        -- 1. FILTERING
         if player == LocalPlayer or not isAlive(player) or isTeammate(player) then
             continue
         end
@@ -129,13 +127,11 @@ local function findBestTarget()
             continue
         end
 
-        -- 2. NEW: MAX RANGE CHECK
         local dist3D = (targetPart.Position - myRoot.Position).Magnitude
         if dist3D > SETTINGS.MaxRange then
-            continue -- Target is too far
+            continue
         end
 
-        -- 3. FOV & VISIBILITY CHECK
         local screenPos, onScreen = Camera:WorldToViewportPoint(targetPart.Position)
         if not onScreen then
             continue
@@ -143,21 +139,19 @@ local function findBestTarget()
         
         local distFromCrosshair = (Vector2.new(screenPos.X, screenPos.Y) - crosshairPos).Magnitude
         if distFromCrosshair > (SETTINGS.FOV_Size / 2) then
-            continue -- Outside of FOV Circle
+            continue
         end
         
         if SETTINGS.VisCheck and not isVisible(targetPart) then
-            continue -- Behind a wall
+            continue
         end
 
-        -- 4. PRIORITIZATION
         if SETTINGS.Priority == "Crosshair" then
             if distFromCrosshair < bestPriority then
                 bestPriority = distFromCrosshair
                 bestTarget = player
             end
         elseif SETTINGS.Priority == "Distance" then
-            -- We already calculated dist3D
             if dist3D < bestPriority then
                 bestPriority = dist3D
                 bestTarget = player
@@ -165,7 +159,7 @@ local function findBestTarget()
         end
     end
     
-    return bestTarget -- Returns the *Player* object
+    return bestTarget
 end
 
 --==============================================================================
@@ -179,7 +173,7 @@ local Window = Rayfield:CreateWindow({
     ConfigurationSaving = {
         Enabled = true,
         FolderName = "AimAssistConfig",
-        FileName = "AimSpyV5_Mobile"
+        FileName = "AimSpyV6_Mobile"
     }
 })
 
@@ -200,7 +194,6 @@ MainTab:CreateToggle({
     end
 })
 
--- NEW: Max Range Slider
 MainTab:CreateSlider({
     Name = "Max Range (Studs)",
     Range = {50, 1000},
@@ -317,21 +310,13 @@ RunService.RenderStepped:Connect(function()
             return
         end
 
-        -- Update Status
         SpyStatusLabel:Set("Status: LOCKED (" .. TargetPlayer.Name .. ")")
-
-        -- Update Live Data
         TargetHealthLabel:Set("Health: " .. math.floor(TargetHum.Health) .. " / " .. math.floor(TargetHum.MaxHealth))
-        
-        -- FIXED: Display in studs
         local dist = math.floor((TargetPart.Position - myRoot.Position).Magnitude)
         TargetDistanceLabel:Set("Distance: " .. dist .. " studs")
-
-        -- Update Tool
         local tool = TargetChar:FindFirstChildOfClass("Tool")
         TargetToolLabel:Set("Tool: " .. (tool and tool.Name or "None"))
 
-        -- Update Threat
         local targetLookVector = TargetPart.CFrame.LookVector
         local toMe = (myRoot.Position - TargetPart.Position).Unit
         local dot = targetLookVector:Dot(toMe)
@@ -341,9 +326,7 @@ RunService.RenderStepped:Connect(function()
         else
             ThreatLabel:Set("Threat: Low")
         end
-
     else
-        -- No target found
         resetLabels()
     end
 end)
